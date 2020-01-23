@@ -991,17 +991,20 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
     azimuth = (float)(256 * raw->blocks[block].rotation_1 + raw->blocks[block].rotation_2);
 
     int azi1, azi2;
+    int block_offset_old;
     if (0 == return_mode_)
     {                                       // dual return mode
       if (block < (BLOCKS_PER_PACKET - 2))  // 12
       {
         azi1 = 256 * raw->blocks[block + 2].rotation_1 + raw->blocks[block + 2].rotation_2;
         azi2 = 256 * raw->blocks[block].rotation_1 + raw->blocks[block].rotation_2;
+        block_offset_old = 2;
       }
       else
       {
         azi1 = 256 * raw->blocks[block].rotation_1 + raw->blocks[block].rotation_2;
         azi2 = 256 * raw->blocks[block - 2].rotation_1 + raw->blocks[block - 2].rotation_2;
+        block_offset_old = -2;
       }
     }
     else
@@ -1010,11 +1013,13 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
       {
         azi1 = 256 * raw->blocks[block + 1].rotation_1 + raw->blocks[block + 1].rotation_2;
         azi2 = 256 * raw->blocks[block].rotation_1 + raw->blocks[block].rotation_2;
+        block_offset_old = 1;
       }
       else
       {
         azi1 = 256 * raw->blocks[block].rotation_1 + raw->blocks[block].rotation_2;
         azi2 = 256 * raw->blocks[block - 1].rotation_1 + raw->blocks[block - 1].rotation_2;
+        block_offset_old = -1;
       }
     }
     uint16_t diff = (36000 + azi1 - azi2) % 36000;
@@ -1041,9 +1046,15 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
         azimuth_corrected = correctAzimuth(azimuth_corrected_f, dsr);
 
         union two_bytes tmp;
+        // Get current distance.
         tmp.bytes[1] = raw->blocks[block].data[k];
         tmp.bytes[0] = raw->blocks[block].data[k + 1];
         int distance = tmp.uint;
+
+        // Get old distance.
+        tmp.bytes[1] = raw->blocks[block + block_offset_old].data[k];
+        tmp.bytes[0] = raw->blocks[block + block_offset_old].data[k+1];
+        int distance_old = tmp.uint;
 
         // read intensity
         intensity = (float)raw->blocks[block].data[k + 2];
@@ -1051,6 +1062,11 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
 
         float distance2 = pixelToDistance(distance, dsr);
         distance2 = distance2 * DISTANCE_RESOLUTION_NEW;
+
+        float distance2_old = pixelToDistance(distance_old, dsr);
+        distance2_old = distance2_old * DISTANCE_RESOLUTION_NEW;
+
+        const auto dist_diff = std::fabs(distance2_old - distance2);
 
         int arg_horiz_orginal = (int)azimuth_corrected_f % 36000;
         int arg_horiz = azimuth_corrected;
@@ -1075,7 +1091,14 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
           point.y = -distance2 * this->cos_lookup_table_[arg_vert] * this->sin_lookup_table_[arg_horiz] -
                     Rx_ * this->sin_lookup_table_[arg_horiz_orginal];
           point.z = distance2 * this->sin_lookup_table_[arg_vert] + Rz_;
-          point.intensity = intensity;
+          const auto azimuth_diff_rad = azimuth_diff / 100 / 180 * M_PI;
+          const auto arc_length = distance2 * this->cos_lookup_table_[arg_vert] * azimuth_diff_rad;
+          point.intensity = atan(arc_length/ dist_diff);
+//          point.intensity = arc_length;
+//          point.intensity = arc_length;
+//          point.intensity = dist_diff;
+//            point.intensity = distance2_old;
+//          point.intensity = intensity;
           pointcloud->at(this->block_num, dsr) = point;
         }
       }
@@ -1153,6 +1176,7 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
                     Rx_ * this->cos_lookup_table_[arg_horiz_orginal];
           point.y = -distance2 * this->cos_lookup_table_[arg_vert] * this->sin_lookup_table_[arg_horiz] -
                     Rx_ * this->sin_lookup_table_[arg_horiz_orginal];
+
           point.z = distance2 * this->sin_lookup_table_[arg_vert] + Rz_;
           point.intensity = intensity;
           pointcloud->at(this->block_num, dsr) = point;
