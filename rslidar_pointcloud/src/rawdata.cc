@@ -1073,7 +1073,11 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
         int arg_vert = ((VERT_ANGLE[dsr]) % 36000 + 36000) % 36000;
         pcl::PointXYZI point;
 
-        if (distance2 > max_distance_ || distance2 < min_distance_ ||
+        const auto azimuth_diff_rad = azimuth_diff / 18000 * M_PI;
+        const auto arc_length = distance2 * this->cos_lookup_table_[arg_vert] * azimuth_diff_rad;
+        const auto surface_angle = atan(arc_length / dist_diff);
+
+        if (surface_angle < 0.2f || distance2 > max_distance_ || distance2 < min_distance_ ||
             (angle_flag_ && (arg_horiz < start_angle_ || arg_horiz > end_angle_)) ||
             (!angle_flag_ && (arg_horiz > end_angle_ && arg_horiz < start_angle_)))  // invalid distance
         {
@@ -1091,14 +1095,7 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
           point.y = -distance2 * this->cos_lookup_table_[arg_vert] * this->sin_lookup_table_[arg_horiz] -
                     Rx_ * this->sin_lookup_table_[arg_horiz_orginal];
           point.z = distance2 * this->sin_lookup_table_[arg_vert] + Rz_;
-          const auto azimuth_diff_rad = azimuth_diff / 100 / 180 * M_PI;
-          const auto arc_length = distance2 * this->cos_lookup_table_[arg_vert] * azimuth_diff_rad;
-          point.intensity = atan(arc_length/ dist_diff);
-//          point.intensity = arc_length;
-//          point.intensity = arc_length;
-//          point.intensity = dist_diff;
-//            point.intensity = distance2_old;
-//          point.intensity = intensity;
+          point.intensity = intensity;
           pointcloud->at(this->block_num, dsr) = point;
         }
       }
