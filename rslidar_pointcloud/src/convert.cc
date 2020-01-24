@@ -45,8 +45,11 @@ Convert::Convert(ros::NodeHandle node, ros::NodeHandle private_nh) : data_(new r
 
 void Convert::callback(rslidar_pointcloud::CloudNodeConfig& config, uint32_t level)
 {
-//  ROS_INFO("[cloud][convert] Reconfigure Request");
-  // config_.time_offset = config.time_offset;
+  ROS_INFO("[cloud][convert] Reconfigure Request");
+  config_.time_offset = config.time_offset;
+  config_.raw_data.min_surface_angle = config.min_surface_angle;
+  config_.raw_data.debug_surface_angle = config.debug_surface_angle;
+  data_->setParams(config_.raw_data);
 }
 
 /** @brief Callback for raw scan messages. */

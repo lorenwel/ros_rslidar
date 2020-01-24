@@ -787,6 +787,12 @@ int RawData::isABPacket(int distance)
 }
 
 //------------------------------------------------------------
+void RawData::setParams(const Params& params) {
+  std::lock_guard<std::mutex> lock(param_mutex_);
+  params_ = params;
+}
+
+//------------------------------------------------------------
 float RawData::computeTemperature(unsigned char bit1, unsigned char bit2)
 {
   float Temp;
@@ -967,6 +973,8 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
   float azimuth_corrected_f;
   int azimuth_corrected;
 
+  std::lock_guard<std::mutex> lock(param_mutex_);
+
   const raw_packet_t* raw = (const raw_packet_t*)&pkt.data[42];
 
   for (int block = 0; block < BLOCKS_PER_PACKET; block++, this->block_num++)  // 1 packet:12 data blocks
@@ -1073,11 +1081,8 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
         int arg_vert = ((VERT_ANGLE[dsr]) % 36000 + 36000) % 36000;
         pcl::PointXYZI point;
 
-        const auto azimuth_diff_rad = azimuth_diff / 18000 * M_PI;
-        const auto arc_length = distance2 * this->cos_lookup_table_[arg_vert] * azimuth_diff_rad;
-        const auto surface_angle = atan(arc_length / dist_diff);
 
-        if (surface_angle < 0.2f || distance2 > max_distance_ || distance2 < min_distance_ ||
+        if (distance2 > max_distance_ || distance2 < min_distance_ ||
             (angle_flag_ && (arg_horiz < start_angle_ || arg_horiz > end_angle_)) ||
             (!angle_flag_ && (arg_horiz > end_angle_ && arg_horiz < start_angle_)))  // invalid distance
         {
@@ -1089,13 +1094,30 @@ void RawData::unpack_RS32(const rslidar_msgs::rslidarPacket& pkt, pcl::PointClou
         }
         else
         {
-          // If you want to fix the rslidar X aixs to the front side of the cable, please use the two line below
-          point.x = distance2 * this->cos_lookup_table_[arg_vert] * this->cos_lookup_table_[arg_horiz] +
-                    Rx_ * this->cos_lookup_table_[arg_horiz_orginal];
-          point.y = -distance2 * this->cos_lookup_table_[arg_vert] * this->sin_lookup_table_[arg_horiz] -
-                    Rx_ * this->sin_lookup_table_[arg_horiz_orginal];
-          point.z = distance2 * this->sin_lookup_table_[arg_vert] + Rz_;
-          point.intensity = intensity;
+          const auto azimuth_diff_rad = azimuth_diff / 18000 * M_PI;
+          const auto arc_length = distance2 * this->cos_lookup_table_[arg_vert] * azimuth_diff_rad;
+          const float surface_angle = atan(arc_length / dist_diff);
+
+          if (!params_.debug_surface_angle && surface_angle < params_.min_surface_angle) {
+            point.x = NAN;
+            point.y = NAN;
+            point.z = NAN;
+            point.intensity = 0;
+
+          } else {
+            // If you want to fix the rslidar X aixs to the front side of the cable, please use the two line below
+            point.x = distance2 * this->cos_lookup_table_[arg_vert] * this->cos_lookup_table_[arg_horiz] +
+                Rx_ * this->cos_lookup_table_[arg_horiz_orginal];
+            point.y = -distance2 * this->cos_lookup_table_[arg_vert] * this->sin_lookup_table_[arg_horiz] -
+                Rx_ * this->sin_lookup_table_[arg_horiz_orginal];
+            point.z = distance2 * this->sin_lookup_table_[arg_vert] + Rz_;
+            if (params_.debug_surface_angle) {
+              point.intensity = surface_angle;
+            } else {
+              point.intensity = intensity;
+            }
+          }
+
           pointcloud->at(this->block_num, dsr) = point;
         }
       }

@@ -34,6 +34,12 @@ public:
   }
 
 private:
+
+  struct {
+    double time_offset{0};
+    rslidar_rawdata::RawData::Params raw_data;
+  } config_;
+
   void callback(rslidar_pointcloud::CloudNodeConfig& config, uint32_t level);
 
   void processScan(const rslidar_msgs::rslidarScan::ConstPtr& scanMsg);

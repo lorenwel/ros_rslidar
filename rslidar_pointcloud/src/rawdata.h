@@ -22,6 +22,7 @@
 #ifndef _RAWDATA_H
 #define _RAWDATA_H
 
+#include <mutex>
 #include <ros/ros.h>
 #include <ros/package.h>
 #include <rslidar_msgs/rslidarPacket.h>
@@ -132,6 +133,11 @@ public:
     this->sin_lookup_table_.clear();
   }
 
+  struct Params {
+    float min_surface_angle{0.2f};
+    bool debug_surface_angle{false};
+  };
+
   /*load the cablibrated files: angle, distance, intensity*/
   void loadConfigFile(ros::NodeHandle node, ros::NodeHandle private_nh);
 
@@ -160,6 +166,8 @@ public:
   /*estimate the packet type*/
   int isABPacket(int distance);
 
+  void setParams(const Params& params);
+
   void processDifop(const rslidar_msgs::rslidarPacket::ConstPtr& difop_msg);
   ros::Subscriber difop_sub_;
   bool is_init_curve_;
@@ -182,6 +190,9 @@ private:
   bool info_print_flag_;
   bool isBpearlLidar_;
   bool angle_flag_;
+
+  std::mutex param_mutex_;
+  Params params_;
 
   /* cos/sin lookup table */
   std::vector<double> cos_lookup_table_;
